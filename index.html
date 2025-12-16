@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>西姐的小助理(智能版)</title>
+    <title>西姐的小助理(最终版)</title>
 
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -49,7 +49,7 @@
             <div>
                 <div class="text-xs text-gray-500 font-medium mb-0.5" id="headerDate">...</div>
                 <h1 class="text-2xl font-bold text-black tracking-tight flex items-center">
-                    西姐的小助理 <span class="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full ml-2">v3.6</span>
+                    西姐的小助理 <span class="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full ml-2">v3.7</span>
                 </h1>
             </div>
             <div class="flex bg-white rounded-lg p-1 shadow-sm">
@@ -156,6 +156,11 @@
         // --- 核心改动：先弹窗，再录音 ---
         function startRecordingFlow() {
             if(!SpeechClass) return alert("浏览器不支持语音，请手动输入");
+
+            // 关键修复：每次打开前先清空旧数据，防止残留！
+            document.getElementById('editContent').value = '';
+            document.getElementById('editDate').value = dayjs().format('YYYY-MM-DD');
+            document.getElementById('editTime').value = dayjs().format('HH:mm');
 
             var modal = document.getElementById('editModal');
             var overlay = document.getElementById('listeningOverlay');
