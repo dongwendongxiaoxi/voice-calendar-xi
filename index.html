@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>西姐的小助理(实时版)</title>
+    <title>西姐的小助理(智能版)</title>
 
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -49,7 +49,7 @@
             <div>
                 <div class="text-xs text-gray-500 font-medium mb-0.5" id="headerDate">...</div>
                 <h1 class="text-2xl font-bold text-black tracking-tight flex items-center">
-                    西姐的小助理 <span class="text-xs bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full ml-2">v3.5</span>
+                    西姐的小助理 <span class="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full ml-2">v3.6</span>
                 </h1>
             </div>
             <div class="flex bg-white rounded-lg p-1 shadow-sm">
@@ -96,7 +96,7 @@
         <p class="text-[10px] text-gray-400 mt-2 font-medium">点击录音</p>
     </div>
 
-    <!-- 全能弹窗 (直接把输入框和录音状态做到一起) -->
+    <!-- 全能弹窗 -->
     <div id="editModal" class="hidden fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
         <div class="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl transition-all relative">
             
@@ -150,7 +150,6 @@
         window.onload = function() {
             renderHeader();
             renderCalendar();
-            // 绑定事件
             document.getElementById('micBtn').addEventListener('click', startRecordingFlow);
         };
 
@@ -158,17 +157,15 @@
         function startRecordingFlow() {
             if(!SpeechClass) return alert("浏览器不支持语音，请手动输入");
 
-            // 1. 先把弹窗打开！(这是用户点击触发的，绝对合法)
             var modal = document.getElementById('editModal');
             var overlay = document.getElementById('listeningOverlay');
             
             modal.classList.remove('hidden');
-            overlay.classList.remove('hidden'); // 显示波纹层
+            overlay.classList.remove('hidden');
             overlay.classList.add('flex');
             
             document.getElementById('liveText').innerText = "等待声音...";
             
-            // 2. 初始化录音机
             if(recognition) {
                 try { recognition.abort(); } catch(e){}
                 recognition = null;
@@ -178,7 +175,7 @@
                 recognition = new SpeechClass();
                 recognition.lang = 'zh-CN';
                 recognition.continuous = false;
-                recognition.interimResults = true; // 开启实时显示！
+                recognition.interimResults = true;
 
                 recognition.onstart = function() {
                     state.isRecording = true;
@@ -187,24 +184,20 @@
 
                 recognition.onresult = function(event) {
                     var text = event.results[0][0].transcript;
-                    // 实时把字打在屏幕上，让用户看到反应
                     document.getElementById('liveText').innerText = text;
-                    
                     if(event.results[0].isFinal) {
                         finishRecording(text);
                     }
                 };
 
                 recognition.onerror = function(e) {
-                    // 如果出错，也要关闭波纹层，不然就死机了
                     if(e.error !== 'no-speech') {
-                        alert("识别错误: " + e.error);
+                        // alert("识别错误: " + e.error);
                         stopMic(); 
                     }
                 };
 
                 recognition.onend = function() {
-                    // 录音自然结束
                     if(state.isRecording) {
                         stopMic();
                     }
@@ -213,18 +206,16 @@
                 recognition.start();
 
             } catch(e) {
-                alert("启动麦克风失败: " + e.message);
+                alert("启动失败: " + e.message);
                 stopMic();
             }
         }
 
         function stopMic() {
             state.isRecording = false;
-            // 停止录音机
             if(recognition) {
                 try { recognition.stop(); } catch(e){}
             }
-            // 隐藏波纹层，露出输入框
             var overlay = document.getElementById('listeningOverlay');
             overlay.classList.add('hidden');
             overlay.classList.remove('flex');
@@ -235,32 +226,82 @@
             processVoice(text);
         }
 
-        // --- 数据处理 ---
+        // --- 智能语义解析 V2.0 ---
         function processVoice(text) {
             var date = dayjs();
-            if(text.includes('明天')) date = date.add(1, 'day');
-            if(text.includes('后天')) date = date.add(2, 'day');
-            if(text.includes('下周一')) date = date.day(8);
+            var content = text;
+            var dateChanged = false;
 
-            var content = text.replace(/明天|后天|下周一/g, '');
+            // 1. 基础关键词
+            if(text.includes('明天')) { date = date.add(1, 'day'); content = content.replace(/明天/g, ''); dateChanged = true; }
+            else if(text.includes('后天')) { date = date.add(2, 'day'); content = content.replace(/后天/g, ''); dateChanged = true; }
+            
+            // 2. 星期识别 (支持：下周二、周五、星期三)
+            var weekMap = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '日': 0, '天': 0 };
+            var weekMatch = content.match(/(下|本)?(?:个)?(?:周|星期)([一二三四五六日天])/);
+
+            if (weekMatch && !dateChanged) {
+                var prefix = weekMatch[1]; // "下"
+                var dayChar = weekMatch[2]; // "二"
+                var targetDay = weekMap[dayChar];
+
+                if (prefix === '下') {
+                    // 明确说“下周X”：加一周，并定位到那天
+                    date = date.add(1, 'week').day(targetDay);
+                } else {
+                    // 说“周X”：默认找最近的未来那一天
+                    // 先设为本周的这一天
+                    var tempDate = dayjs().day(targetDay);
+                    // 如果这一天已经是过去式（比如今天是周三，说周一），则认为是下周一
+                    if (tempDate.isBefore(dayjs(), 'day')) {
+                        date = tempDate.add(1, 'week');
+                    } else {
+                        date = tempDate;
+                    }
+                }
+                content = content.replace(weekMatch[0], '');
+                dateChanged = true;
+            }
+
+            // 3. 具体日期 (12月5号)
+            var dateMatch = content.match(/(\d{1,2})月(\d{1,2})[号日]?/);
+            if (dateMatch) {
+                var month = parseInt(dateMatch[1]) - 1;
+                var day = parseInt(dateMatch[2]);
+                date = date.month(month).date(day);
+                // 如果日期已过，默认是明年
+                if (date.isBefore(dayjs(), 'day')) {
+                    date = date.add(1, 'year');
+                }
+                content = content.replace(dateMatch[0], '');
+            }
+            
+            // 4. 时间识别
+            var targetTime = dayjs().format('HH:mm');
+            var timeMatch = content.match(/(上午|下午|晚上)?(\d{1,2})点(\d{1,2})?/);
+            if(timeMatch) {
+                var h = parseInt(timeMatch[2]);
+                if((timeMatch[1] === '下午' || timeMatch[1] === '晚上') && h < 12) h += 12;
+                var m = timeMatch[3] ? parseInt(timeMatch[3]) : 0;
+                targetTime = (h<10?'0'+h:h) + ':' + (m<10?'0'+m:m);
+                content = content.replace(timeMatch[0], '').replace('分','');
+            }
             
             // 填入输入框
             document.getElementById('editDate').value = date.format('YYYY-MM-DD');
-            document.getElementById('editContent').value = content;
-            document.getElementById('editTime').value = dayjs().format('HH:mm');
+            document.getElementById('editContent').value = content.trim();
+            document.getElementById('editTime').value = targetTime;
         }
 
         // --- 常规 UI ---
         function closeEditModal() {
             document.getElementById('editModal').classList.add('hidden');
-            stopMic(); // 关窗即停
+            stopMic();
         }
 
         function testModal() {
-            // 手动打开，不显示波纹层
             var modal = document.getElementById('editModal');
             var overlay = document.getElementById('listeningOverlay');
-            
             modal.classList.remove('hidden');
             overlay.classList.add('hidden');
             overlay.classList.remove('flex');
@@ -304,7 +345,7 @@
                     document.getElementById('editDate').value = d;
                     document.getElementById('editContent').value = '';
                     document.getElementById('editTime').value = dayjs().format('HH:mm');
-                    testModal(); // 复用测试弹窗的逻辑来打开编辑
+                    testModal();
                 }; })(dateStr);
                 
                 grid.appendChild(cell);
