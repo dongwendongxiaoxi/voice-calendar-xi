@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>我的语音日程</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/locale/zh-cn.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #F2F2F7; /* iOS Light Grey */
+            -webkit-tap-highlight-color: transparent;
+        }
+        .apple-card {
+            background: rgba(255, 255, 255, 1);
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        .mic-btn {
+            background: #007AFF; /* iOS Blue */
+            box-shadow: 0 4px 15px rgba(0, 122, 255, 0.4);
+            transition: all 0.2s;
+        }
+        .mic-btn:active {
+            transform: scale(0.95);
+        }
+        .mic-btn.recording {
+            background: #FF3B30; /* iOS Red */
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(255, 59, 48, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); }
+        }
+        /* Hide scrollbar for clean look */
+        ::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden text-gray-800">
+
+    <header class="pt-12 pb-4 px-6 bg-white shadow-sm flex justify-between items-center z-10">
+        <div>
+            <h1 class="text-2xl font-bold tracking-tight text-black" id="currentMonthYear">2025年 12月</h1>
+            <p class="text-xs text-gray-500 mt-1" id="todayText">今天</p>
+        </div>
+        <button onclick="goToToday()" class="text-blue-500 text-sm font-medium">回到今天</button>
+    </header>
+
+    <div class="px-2 pt-2 bg-white pb-4 rounded-b-3xl shadow-sm z-0">
+        <div class="grid grid-cols-7 text-center mb-2">
+            <div class="text-xs text-gray-400">日</div>
+            <div class="text-xs text-gray-400">一</div>
+            <div class="text-xs text-gray-400">二</div>
+            <div class="text-xs text-gray-400">三</div>
+            <div class="text-xs text-gray-400">四</div>
+            <div class="text-xs text-gray-400">五</div>
+            <div class="text-xs text-gray-400">六</div>
+        </div>
+        <div class="grid grid-cols-7 text-center gap-y-2" id="calendarGrid">
+            </div>
+    </div>
+
+    <div class="flex-1 overflow-y-auto p-4" id="eventListContainer">
+        <h2 class="text-sm font-semibold text-gray-500 mb-3 px-2" id="selectedDateTitle">今日日程</h2>
+        <div id="eventList" class="space-y-3 pb-24">
+            </div>
+    </div>
+
+    <div class="fixed bottom-8 left-0 w-full flex justify-center items-center z-20 pointer-events-none">
+        <button id="micBtn" onclick="toggleRecording()" class="mic-btn pointer-events-auto w-16 h-16 rounded-full flex items-center justify-center text-white text-2xl">
+            <i class="fas fa-microphone"></i>
+        </button>
+    </div>
+
+    <div id="modal" class="fixed inset-0 bg-black bg-opacity-30 hidden z-50 flex items-end sm:items-center justify-center backdrop-blur-sm">
+        <div class="bg-white w-full sm:w-96 rounded-t-2xl sm:rounded-2xl p-6 shadow-2xl transform transition-transform duration-300">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold">新日程</h3>
+                <button onclick="closeModal()" class="text-gray-400"><i class="fas fa-times"></i></button>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">内容</label>
+                    <textarea id="inputContent" class="w-full bg-gray-100 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-20" placeholder="例如：风电项目会议"></textarea>
+                </div>
+                <div class="flex space-x-2">
+                    <div class="flex-1">
+                        <label class="block text-xs text-gray-500 mb-1">日期</label>
+                        <input type="date" id="inputDate" class="w-full bg-gray-100 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-xs text-gray-500 mb-1">时间</label>
+                        <input type="time" id="inputTime" class="w-full bg-gray-100 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>
+            </div>
+
+            <button onclick="saveEvent()" class="mt-6 w-full bg-blue-600 text-white font-semibold py-3 rounded-xl active:bg-blue-700 transition">
+                保存日程
+            </button>
+        </div>
+    </div>
+
+    <script>
+        dayjs.locale('zh-cn');
+        
+        // 状态变量
+        let currentDate = dayjs(); // 当前浏览的月份
+        let selectedDate = dayjs(); // 当前选中的日期
+        let events = JSON.parse(localStorage.getItem('myVoiceCalendarEvents')) || [];
+        let isRecording = false;
+        let recognition;
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            initSpeech();
+            renderCalendar();
+            renderEvents();
+            document.getElementById('todayText').innerText = dayjs().format('YYYY年M月D日 dddd');
+        });
+
+        // ---------------- 核心逻辑：日历渲染 ----------------
+        function renderCalendar() {
+            const grid = document.getElementById('calendarGrid');
+            const monthYear = document.getElementById('currentMonthYear');
+            
+            monthYear.innerText = currentDate.format('YYYY年 M月');
+            grid.innerHTML = '';
+
+            const startOfMonth = currentDate.startOf('month');
+            const daysInMonth = currentDate.daysInMonth();
+            const startDayOfWeek = startOfMonth.day(); // 0 is Sunday
+
+            // 填充前面的空白
+            for(let i=0; i<startDayOfWeek; i++) {
+                grid.innerHTML += `<div></div>`;
+            }
+
+            // 填充日期
+            for(let i=1; i<=daysInMonth; i++) {
+                const dateStr = currentDate.date(i).format('YYYY-MM-DD');
+                const isSelected = selectedDate.format('YYYY-MM-DD') === dateStr;
+                const isToday = dayjs().format('YYYY-MM-DD') === dateStr;
+                
+                // 检查该日期是否有日程
+                const hasEvent = events.some(e => e.date === dateStr);
+
+                let classStr = "h-10 w-10 mx-auto flex items-center justify-center rounded-full text-sm font-medium transition cursor-pointer relative ";
+                if (isSelected) {
+                    classStr += "bg-black text-white shadow-md";
+                } else if (isToday) {
+                    classStr += "text-blue-600 bg-blue-50";
+                } else {
+                    classStr += "text-gray-700 hover:bg-gray-100";
+                }
+
+                let dotHtml = hasEvent && !isSelected ? `<span class="absolute bottom-1 w-1 h-1 bg-gray-400 rounded-full"></span>` : '';
+
+                grid.innerHTML += `
+                    <div onclick="selectDate('${dateStr}')">
+                        <div class="${classStr}">
+                            ${i}
+                            ${dotHtml}
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        function selectDate(dateStr) {
+            selectedDate = dayjs(dateStr);
+            renderCalendar(); // 重新渲染以更新选中状态
+            renderEvents();
+        }
+
+        function goToToday() {
+            currentDate = dayjs();
+            selectedDate = dayjs();
+            renderCalendar();
+            renderEvents();
+        }
+
+        // ---------------- 核心逻辑：日程列表 ----------------
+        function renderEvents() {
+            const list = document.getElementById('eventList');
+            const title = document.getElementById('selectedDateTitle');
+            const dateStr = selectedDate.format('YYYY-MM-DD');
+            
+            // 标题显示
+            let titleText = selectedDate.format('M月D日 dddd');
+            if(dateStr === dayjs().format('YYYY-MM-DD')) titleText = "今天 (" + titleText + ")";
+            title.innerText = titleText;
+
+            // 过滤当日日程并排序
+            const dayEvents = events
+                .filter(e => e.date === dateStr)
+                .sort((a, b) => (a.time || '00:00').localeCompare(b.time || '00:00'));
+
+            list.innerHTML = '';
+
+            if (dayEvents.length === 0) {
+                list.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-10 text-gray-300">
+                        <i class="fas fa-coffee text-4xl mb-3"></i>
+                        <p class="text-sm">今天暂无安排，放松一下吧</p>
+                    </div>
+                `;
+                return;
+            }
+
+            dayEvents.forEach((e, index) => {
+                list.innerHTML += `
+                    <div class="apple-card p-4 flex items-start space-x-4 relative group">
+                        <div class="flex flex-col items-center pt-1">
+                            <span class="text-xs font-bold text-gray-500">${e.time || '全天'}</span>
+                            <div class="h-full w-0.5 bg-gray-100 mt-2"></div>
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-base font-medium text-gray-800">${e.content}</p>
+                        </div>
+                        <button onclick="deleteEvent('${e.id}')" class="text-red-300 hover:text-red-500 px-2">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </div>
+                `;
+            });
+        }
+
+        function saveEvent() {
+            const content = document.getElementById('inputContent').value;
+            const date = document.getElementById('inputDate').value;
+            const time = document.getElementById('inputTime').value;
+
+            if(!content) return alert("内容不能为空");
+
+            const newEvent = {
+                id: Date.now().toString(),
+                content,
+                date,
+                time
+            };
+
+            events.push(newEvent);
+            localStorage.setItem('myVoiceCalendarEvents', JSON.stringify(events));
+            
+            closeModal();
+            // 如果添加日期的月份不是当前视图，跳转过去
+            if(!dayjs(date).isSame(currentDate, 'month')) {
+                currentDate = dayjs(date);
+            }
+            selectDate(date);
+        }
+
+        function deleteEvent(id) {
+            if(!confirm("确定删除这条日程吗？")) return;
+            events = events.filter(e => e.id !== id);
+            localStorage.setItem('myVoiceCalendarEvents', JSON.stringify(events));
+            renderCalendar(); // 更新小圆点
+            renderEvents();
+        }
+
+        // ---------------- 核心逻辑：语音识别与解析 ----------------
+        function initSpeech() {
+            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                recognition = new SpeechRecognition();
+                recognition.lang = 'zh-CN';
+                recognition.continuous = false;
+                recognition.interimResults = false;
+
+                recognition.onstart = () => {
+                    isRecording = true;
+                    document.getElementById('micBtn').classList.add('recording');
+                };
+
+                recognition.onend = () => {
+                    isRecording = false;
+                    document.getElementById('micBtn').classList.remove('recording');
+                };
+
+                recognition.onresult = (event) => {
+                    const text = event.results[0][0].transcript;
+                    processVoiceInput(text);
+                };
+            } else {
+                alert("您的浏览器暂不支持语音识别，请使用 Safari 或 Chrome");
+            }
+        }
+
+        function toggleRecording() {
+            if(!recognition) return alert("语音功能不可用");
+            if(isRecording) recognition.stop();
+            else recognition.start();
+        }
+
+        // 简单的自然语言处理 (小西姐，这里是核心的“工程魔法”)
+        function processVoiceInput(text) {
+            let targetDate = dayjs();
+            let targetTime = dayjs().format('HH:mm'); // 默认当前时间
+            let content = text;
+
+            // 1. 识别日期关键词
+            if (text.includes('明天')) {
+                targetDate = targetDate.add(1, 'day');
+                content = content.replace('明天', '');
+            } else if (text.includes('后天')) {
+                targetDate = targetDate.add(2, 'day');
+                content = content.replace('后天', '');
+            } else if (text.includes('下周一')) {
+                targetDate = targetDate.day(8); // 下周一
+                content = content.replace('下周一', '');
+            } 
+            // 更多逻辑可以根据需要添加，比如“周三”
+
+            // 2. 识别时间关键词 (简单的正则，匹配 "X点", "X点半", "下午X点")
+            // 这里做一个简单的处理：查找“点”字
+            const timeRegex = /([0-2]?[0-9])点([0-5]?[0-9])?/;
+            const match = text.match(timeRegex);
+            if (match) {
+                let hour = parseInt(match[1]);
+                let minute = match[2] ? parseInt(match[2]) : 0;
+                
+                if (text.includes('下午') && hour < 12) hour += 12;
+                if (text.includes('晚上') && hour < 12) hour += 12;
+
+                targetTime = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+                
+                // 清理文本中的时间描述，让记录更干净
+                content = content.replace(/下午|上午|晚上/g, '').replace(match[0], '').replace('分', '');
+            }
+
+            // 3. 填入弹窗让用户确认
+            document.getElementById('inputContent').value = content.trim();
+            document.getElementById('inputDate').value = targetDate.format('YYYY-MM-DD');
+            document.getElementById('inputTime').value = targetTime;
+
+            document.getElementById('modal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('modal').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
