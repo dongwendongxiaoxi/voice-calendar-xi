@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>西姐的小助理(诊断版)</title>
+    <title>西姐的小助理(稳定版)</title>
 
     <!-- 1. 优先加载样式，防止白屏 -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -93,7 +93,7 @@
             <div>
                 <div class="text-xs text-gray-500 font-medium mb-0.5" id="headerDate">加载中...</div>
                 <h1 class="text-2xl font-bold text-black tracking-tight flex items-center">
-                    西姐的小助理 v3.1
+                    西姐的小助理 v3.2
                 </h1>
             </div>
             <div class="flex bg-white rounded-lg p-1 shadow-sm">
@@ -170,6 +170,7 @@
             isRecording: false
         };
         var recognition = null;
+        var SpeechClass = window.SpeechRecognition || window.webkitSpeechRecognition;
 
         // 1. 初始化入口
         try {
@@ -188,10 +189,7 @@
             
             renderHeader();
             renderCalendar();
-            initSpeech();
-            
-            // 绑定事件
-            document.getElementById('micBtn').addEventListener('click', toggleRecording);
+            // 注意：不要在加载时直接 initSpeech，而是在用户点击时按需创建，这样更稳
             console.log("系统就绪，等待操作。");
 
         } catch (e) {
@@ -281,57 +279,91 @@
             console.log("保存成功");
         }
 
-        // --- 语音逻辑 ---
-        function initSpeech() {
-            var SpeechClass = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if(!SpeechClass) {
-                console.log("⚠️ 警告: 此浏览器不支持语音 API");
-                document.getElementById('micBtn').style.backgroundColor = '#ccc';
-                return;
-            }
-            recognition = new SpeechClass();
-            recognition.lang = 'zh-CN';
-            recognition.continuous = false;
+        // --- 语音逻辑 (重构版：每次都新建，防止假死) ---
+        
+        // 创建一个新的语音实例并绑定事件
+        function createRecognition() {
+            if(!SpeechClass) return null;
             
-            recognition.onstart = function() {
+            var rec = new SpeechClass();
+            rec.lang = 'zh-CN';
+            rec.continuous = false;
+            
+            rec.onstart = function() {
                 state.isRecording = true;
                 document.getElementById('micBtn').classList.replace('bg-blue-600', 'bg-red-500');
                 document.getElementById('statusTip').style.opacity = 1;
                 document.getElementById('statusTip').innerText = "正在听...";
-                console.log("录音开始...");
+                console.log(">> 录音机启动成功");
             };
             
-            recognition.onend = function() {
+            rec.onend = function() {
+                console.log(">> 录音结束 (onend)");
                 state.isRecording = false;
                 document.getElementById('micBtn').classList.replace('bg-red-500', 'bg-blue-600');
                 document.getElementById('statusTip').style.opacity = 0;
-                console.log("录音结束");
+                
+                // 关键修正：防止僵尸实例
+                if(recognition) {
+                    try { recognition.abort(); } catch(e){}
+                    recognition = null; // 销毁引用
+                }
             };
             
-            recognition.onresult = function(event) {
+            rec.onresult = function(event) {
                 var text = event.results[0][0].transcript;
-                console.log("识别结果: " + text);
+                console.log(">> 识别内容: " + text);
                 processVoice(text);
+                // 识别到结果后，强制停止
+                rec.stop();
             };
             
-            recognition.onerror = function(e) {
-                console.log("录音报错: " + e.error);
-                alert("语音错误: " + e.error);
+            rec.onerror = function(e) {
+                console.log(">> 录音报错: " + e.error);
+                if(e.error === 'not-allowed') alert("请允许麦克风权限");
+                // 报错也要销毁
+                recognition = null;
+                state.isRecording = false;
+                document.getElementById('micBtn').classList.replace('bg-red-500', 'bg-blue-600');
             };
+            
+            return rec;
         }
 
-        function toggleRecording() {
-            if(!recognition) return alert("浏览器不支持语音，请手动添加");
-            if(state.isRecording) recognition.stop();
-            else {
-                try {
-                    recognition.start();
-                    console.log("启动录音指令...");
-                } catch(e) {
-                    console.log("启动异常: " + e.message);
-                }
+        // 绑定按钮事件
+        document.getElementById('micBtn').addEventListener('click', function() {
+            if(!SpeechClass) return alert("浏览器不支持语音，请手动添加");
+            
+            // 如果正在录音，则停止
+            if(state.isRecording && recognition) {
+                console.log("用户手动停止");
+                try { recognition.stop(); } catch(e){}
+                return;
             }
-        }
+
+            // 如果没在录音，则开始
+            console.log("用户点击开始录音...");
+            
+            // 安全策略：先尝试销毁旧的（如果有）
+            if(recognition) {
+                try { recognition.abort(); } catch(e){}
+                recognition = null;
+            }
+
+            // 新建实例
+            try {
+                recognition = createRecognition();
+                recognition.start();
+            } catch(e) {
+                console.log("启动异常，尝试强制重启: " + e.message);
+                // 再次尝试
+                setTimeout(function(){
+                    if(recognition) recognition.abort();
+                    recognition = createRecognition();
+                    recognition.start();
+                }, 200);
+            }
+        });
 
         function processVoice(text) {
             // 简单的逻辑
@@ -340,7 +372,10 @@
             if(text.includes('后天')) date = date.add(2, 'day');
             
             var content = text.replace(/明天|后天/g, '');
-            openEditModal(date.format('YYYY-MM-DD'), content);
+            // 延时一点点确保录音动画结束
+            setTimeout(function(){
+                openEditModal(date.format('YYYY-MM-DD'), content);
+            }, 300);
         }
     </script>
 </body>
