@@ -5,471 +5,342 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>西姐的小助理</title>
+    <title>西姐的小助理(诊断版)</title>
 
+    <!-- 1. 优先加载样式，防止白屏 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/locale/zh-cn.js"></script>
-
+    
+    <!-- 2. 全局错误捕获系统 (放在最前面) -->
     <style>
-        body {
-            font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
-            background-color: #F5F5F7;
-            -webkit-tap-highlight-color: transparent;
-            overscroll-behavior-y: none;
+        #error-overlay {
+            display: none;
+            position: fixed; top: 0; left: 0; width: 100%; height: auto;
+            background: rgba(255, 0, 0, 0.9); color: white;
+            z-index: 9999; padding: 20px; font-size: 12px;
+            white-space: pre-wrap; word-break: break-all;
+        }
+        
+        #debugConsole {
+            display: block; /* 强制显示 */
+            background: #1a1a1a; color: #00ff00;
+            font-family: monospace; font-size: 11px;
+            padding: 10px; border-top: 2px solid #333;
+            height: 150px; overflow-y: scroll;
+            margin-bottom: 80px; /* 给底部按钮留位置 */
         }
 
+        /* 基础样式 */
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background-color: #F5F5F7; -webkit-tap-highlight-color: transparent; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         
         .mic-wave {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            border-radius: 50%;
-            background-color: rgba(239, 68, 68, 0.4);
-            opacity: 0;
-            z-index: -1;
+            position: absolute; width: 100%; height: 100%;
+            border-radius: 50%; background-color: rgba(239, 68, 68, 0.4);
+            opacity: 0; z-index: -1;
         }
-        .mic-active .mic-wave {
-            animation: ripple 1.5s infinite;
-        }
-        @keyframes ripple {
-            0% { transform: scale(1); opacity: 0.6; }
-            100% { transform: scale(1.6); opacity: 0; }
-        }
+        .mic-active .mic-wave { animation: ripple 1.5s infinite; }
+        @keyframes ripple { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(1.6); opacity: 0; } }
 
-        .calendar-cell {
-            min-height: 85px;
-            border-right: 1px solid #f0f0f0;
-            border-bottom: 1px solid #f0f0f0;
-            transition: background-color 0.15s;
-        }
+        .calendar-cell { min-height: 85px; border-right: 1px solid #f0f0f0; border-bottom: 1px solid #f0f0f0; }
         .calendar-cell:nth-child(7n) { border-right: none; }
-        
-        .event-tag {
-            font-size: 10px;
-            line-height: 1.2;
-            padding: 2px 4px;
-            border-radius: 3px;
-            margin-bottom: 1px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            width: 100%;
-        }
-
-        input, textarea {
-            -webkit-appearance: none;
-            border-radius: 0.75rem;
-        }
-
+        .event-tag { font-size: 10px; padding: 2px 4px; border-radius: 3px; margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        input, textarea { -webkit-appearance: none; border-radius: 0.75rem; }
         .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
-
-        /* 日志区域样式 */
-        #debugConsole {
-            font-family: monospace;
-            font-size: 10px;
-            color: #666;
-            background: #eee;
-            padding: 10px;
-            border-top: 1px solid #ccc;
-            max-height: 100px;
-            overflow-y: auto;
-        }
     </style>
+
+    <script>
+        // 立即接管错误输出
+        window.onerror = function(msg, url, line, col, error) {
+            var errorBox = document.getElementById('error-overlay');
+            if(errorBox) {
+                errorBox.style.display = 'block';
+                errorBox.innerHTML += "🔴 错误: " + msg + "\n位置: " + line + ":" + col + "\n\n";
+            }
+            // 同时打印到控制台
+            var consoleDiv = document.getElementById('debugConsole');
+            if(consoleDiv) {
+                consoleDiv.innerHTML = "<div style='color:red'>> ERROR: " + msg + "</div>" + consoleDiv.innerHTML;
+            }
+            return false;
+        };
+
+        // 接管 console.log
+        var oldLog = console.log;
+        console.log = function(message) {
+            oldLog.apply(console, arguments);
+            var consoleDiv = document.getElementById('debugConsole');
+            if(consoleDiv) {
+                var p = document.createElement('div');
+                p.innerText = "> " + message;
+                consoleDiv.insertBefore(p, consoleDiv.firstChild);
+            }
+        };
+    </script>
+
+    <!-- 3. 加载外部库 (放在后面，防止阻塞错误系统) -->
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/locale/zh-cn.js"></script>
 </head>
 <body class="h-screen flex flex-col text-gray-800 bg-white">
 
+    <!-- 红色错误层 (平时隐藏，报错时自动出现) -->
+    <div id="error-overlay"></div>
+
     <!-- 顶部栏 -->
-    <header class="bg-[#F5F5F7] px-4 pt-12 pb-3 flex justify-between items-end border-b border-gray-200 sticky top-0 z-20">
-        <div onclick="toggleDebug()" class="cursor-pointer">
-            <div class="text-xs text-gray-500 font-medium mb-0.5" id="headerDate">...</div>
-            <h1 class="text-2xl font-bold text-black tracking-tight flex items-center">
-                西姐的小助理
-                <i class="fas fa-bolt text-yellow-500 ml-2 text-lg"></i>
-            </h1>
+    <header class="bg-[#F5F5F7] px-4 pt-12 pb-3 flex flex-col border-b border-gray-200 sticky top-0 z-20">
+        <div class="flex justify-between items-end mb-2">
+            <div>
+                <div class="text-xs text-gray-500 font-medium mb-0.5" id="headerDate">加载中...</div>
+                <h1 class="text-2xl font-bold text-black tracking-tight flex items-center">
+                    西姐的小助理 v3.1
+                </h1>
+            </div>
+            <div class="flex bg-white rounded-lg p-1 shadow-sm">
+                <button onclick="changeMonth(-1)" class="w-8 h-8 flex items-center justify-center text-gray-600"><i class="fas fa-chevron-left"></i></button>
+                <span class="w-16 flex items-center justify-center font-bold text-sm" id="currentMonthLabel">...</span>
+                <button onclick="changeMonth(1)" class="w-8 h-8 flex items-center justify-center text-gray-600"><i class="fas fa-chevron-right"></i></button>
+            </div>
         </div>
-        <div class="flex bg-white rounded-lg p-1 shadow-sm">
-            <button onclick="changeMonth(-1)" class="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-blue-600"><i class="fas fa-chevron-left"></i></button>
-            <span class="w-16 flex items-center justify-center font-bold text-sm" id="currentMonthLabel">...</span>
-            <button onclick="changeMonth(1)" class="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-blue-600"><i class="fas fa-chevron-right"></i></button>
-        </div>
+        
+        <!-- 强制测试按钮 -->
+        <button onclick="forceTestModal()" class="bg-blue-100 text-blue-700 px-3 py-2 rounded-lg text-xs font-bold w-full text-center border border-blue-200">
+            🛠 点我测试弹窗 (若没反应则是样式问题)
+        </button>
     </header>
 
     <!-- 星期头 -->
     <div class="grid grid-cols-7 bg-[#F5F5F7] border-b border-gray-200 py-1">
-        <div class="text-center text-xs text-gray-400 font-medium">日</div>
-        <div class="text-center text-xs text-gray-400 font-medium">一</div>
-        <div class="text-center text-xs text-gray-400 font-medium">二</div>
-        <div class="text-center text-xs text-gray-400 font-medium">三</div>
-        <div class="text-center text-xs text-gray-400 font-medium">四</div>
-        <div class="text-center text-xs text-gray-400 font-medium">五</div>
-        <div class="text-center text-xs text-gray-400 font-medium">六</div>
+        <div class="text-center text-xs text-gray-400">日</div>
+        <div class="text-center text-xs text-gray-400">一</div>
+        <div class="text-center text-xs text-gray-400">二</div>
+        <div class="text-center text-xs text-gray-400">三</div>
+        <div class="text-center text-xs text-gray-400">四</div>
+        <div class="text-center text-xs text-gray-400">五</div>
+        <div class="text-center text-xs text-gray-400">六</div>
     </div>
 
-    <!-- 大格子日历主体 -->
+    <!-- 日历主体 -->
     <div class="flex-1 overflow-y-auto bg-white relative" id="calendarContainer">
-        <div class="grid grid-cols-7 border-l border-gray-100" id="calendarGrid">
-            <!-- 动态生成格子 -->
+        <div class="grid grid-cols-7 border-l border-gray-100" id="calendarGrid"></div>
+        
+        <div class="p-4">
+            <h3 class="text-xs font-bold text-gray-500 mb-2">系统运行日志 (实时):</h3>
+            <div id="debugConsole">初始化日志系统...</div>
         </div>
         
-        <!-- 版本号标识 -->
-        <div class="text-center py-4 text-gray-300 text-[10px]">
-            System v3.0 (Native)
-        </div>
-        
-        <!-- 底部留白 -->
         <div class="h-24"></div>
     </div>
 
-    <!-- 可视化调试日志 (默认隐藏，点标题可切换) -->
-    <div id="debugConsole" class="hidden">
-        <div>> 系统就绪 v3.0</div>
-    </div>
-
-    <!-- 底部悬浮录音按钮 -->
-    <div class="fixed bottom-8 left-0 w-full flex flex-col items-center justify-center z-40 pointer-events-none safe-area-bottom">
-        <div class="bg-black/80 backdrop-blur-md text-white px-4 py-2 rounded-full text-xs font-bold mb-3 opacity-0 transition-opacity shadow-lg" id="statusTip">
-            准备就绪
-        </div>
-        <div class="relative pointer-events-auto group">
+    <!-- 底部按钮 -->
+    <div class="fixed bottom-8 left-0 w-full flex flex-col items-center justify-center z-40 safe-area-bottom">
+        <div class="bg-black/80 backdrop-blur-md text-white px-4 py-2 rounded-full text-xs font-bold mb-3 opacity-0 transition-opacity" id="statusTip">Ready</div>
+        <div class="relative group">
             <div class="mic-wave"></div>
-            <button id="micBtn" 
-                class="w-16 h-16 bg-blue-600 rounded-full text-white shadow-xl flex items-center justify-center text-2xl transition-transform active:scale-95">
+            <button id="micBtn" class="w-16 h-16 bg-blue-600 rounded-full text-white shadow-xl flex items-center justify-center text-2xl transition-transform active:scale-95">
                 <i class="fas fa-microphone"></i>
             </button>
         </div>
-        <p class="text-[10px] text-gray-400 mt-2 font-medium">点击录音 · 再次点击停止</p>
     </div>
 
-    <!-- 详情弹窗 (Native Div) -->
-    <div id="detailModal" class="fixed inset-0 z-50 hidden" style="z-index: 50;">
-        <div class="fixed inset-0 bg-black/40 backdrop-blur-sm transition-opacity" onclick="closeDetailModal()"></div>
-        <div class="fixed inset-x-0 bottom-0 bg-white rounded-t-2xl p-5 shadow-2xl transform transition-transform duration-300 safe-area-bottom">
-            <div class="flex justify-between items-center mb-4 border-b pb-2">
-                <div>
-                    <h3 class="text-xl font-bold" id="detailDate">...</h3>
-                    <p class="text-xs text-gray-500" id="detailWeekday">...</p>
-                </div>
-                <button onclick="closeDetailModal()" class="w-8 h-8 bg-gray-100 rounded-full text-gray-500"><i class="fas fa-times"></i></button>
+    <!-- 编辑弹窗 (使用最简单的 style display 控制，防止 class 失效) -->
+    <div id="editModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index:999; justify-content:center; items-align:center;">
+        <div style="position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5);" onclick="closeEditModal()"></div>
+        <div style="position:relative; width:90%; max-width:320px; background:white; padding:20px; border-radius:16px; margin-top: 30%;">
+            <h3 class="text-lg font-bold mb-4 text-center">日程记录</h3>
+            <textarea id="editContent" rows="3" class="w-full bg-gray-50 border p-3 rounded-lg mb-4" placeholder="说点什么..."></textarea>
+            <div class="flex gap-2 mb-4">
+                <input type="date" id="editDate" class="flex-1 border p-2 rounded-lg bg-gray-50">
+                <input type="time" id="editTime" class="w-24 border p-2 rounded-lg bg-gray-50">
             </div>
-            
-            <div id="dayEventList" class="space-y-3 mb-6 max-h-[40vh] overflow-y-auto"></div>
-
-            <button onclick="openEditModal(state.selectedDateStr)" class="w-full py-3 bg-gray-100 text-gray-700 font-bold rounded-xl active:bg-gray-200">
-                <i class="fas fa-plus mr-1"></i> 手动添加
-            </button>
-        </div>
-    </div>
-
-    <!-- 编辑/确认弹窗 (Native Div - 绝对置顶) -->
-    <div id="editModal" class="fixed inset-0 hidden flex items-center justify-center" style="z-index: 100;">
-        <!-- 遮罩 -->
-        <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" onclick="closeEditModal()"></div>
-        
-        <!-- 弹窗主体 -->
-        <div class="relative w-[90%] max-w-sm bg-white rounded-2xl p-6 shadow-2xl animate-bounce-in">
-            <h3 class="text-lg font-bold mb-4 text-center">确认日程</h3>
-            
-            <textarea id="editContent" rows="3" class="w-full bg-gray-50 rounded-xl p-3 text-base mb-4 border border-gray-200 focus:border-blue-500 outline-none" placeholder="内容..."></textarea>
-            
-            <div class="flex space-x-2 mb-6">
-                <input type="date" id="editDate" class="flex-1 bg-gray-50 rounded-xl p-3 text-sm border border-gray-200">
-                <input type="time" id="editTime" class="w-28 bg-gray-50 rounded-xl p-3 text-sm border border-gray-200">
+            <div class="flex gap-2">
+                <button onclick="closeEditModal()" class="flex-1 py-3 bg-gray-100 rounded-lg font-bold">取消</button>
+                <button onclick="saveEvent()" class="flex-1 py-3 bg-blue-600 text-white rounded-lg font-bold">保存</button>
             </div>
-
-            <div class="flex space-x-3">
-                <button onclick="closeEditModal()" class="flex-1 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl">取消</button>
-                <button onclick="saveEvent()" class="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-500/30">保存</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 简单的自定义 Alert (替代 SweetAlert) -->
-    <div id="customAlert" class="fixed inset-0 hidden items-center justify-center" style="z-index: 110;">
-        <div class="fixed inset-0 bg-black/20" onclick="closeCustomAlert()"></div>
-        <div class="relative bg-white/90 backdrop-blur-xl p-5 rounded-2xl w-64 text-center shadow-2xl border border-gray-200">
-            <div id="alertIcon" class="text-3xl mb-2">⚠️</div>
-            <h3 id="alertTitle" class="font-bold text-lg mb-1">提示</h3>
-            <p id="alertMsg" class="text-sm text-gray-500 mb-4">内容</p>
-            <button onclick="closeCustomAlert()" class="w-full py-2 bg-gray-100 font-bold rounded-lg text-blue-600">知道了</button>
         </div>
     </div>
 
     <script>
-        dayjs.locale('zh-cn');
-
-        let state = {
-            currentDate: dayjs(),
-            selectedDateStr: null,
-            events: JSON.parse(localStorage.getItem('xi_assistant_events')) || [],
+        // 核心逻辑放在最后执行
+        
+        // 0. 变量定义
+        var state = {
+            currentDate: null,
+            events: [],
             isRecording: false
         };
+        var recognition = null;
 
-        let recognition;
-
-        // 日志工具
-        function log(msg) {
-            console.log(msg);
-            const consoleDiv = document.getElementById('debugConsole');
-            const p = document.createElement('div');
-            p.innerText = `> ${msg}`;
-            consoleDiv.insertBefore(p, consoleDiv.firstChild);
-            // 自动展示
-            if(msg.includes('失败') || msg.includes('Error')) {
-                consoleDiv.classList.remove('hidden');
+        // 1. 初始化入口
+        try {
+            console.log("脚本开始执行...");
+            
+            // 检查库是否加载
+            if(typeof dayjs === 'undefined') {
+                throw new Error("Dayjs 库加载失败，可能是网络问题");
             }
-        }
 
-        function toggleDebug() {
-            document.getElementById('debugConsole').classList.toggle('hidden');
-        }
+            dayjs.locale('zh-cn');
+            state.currentDate = dayjs();
+            state.events = JSON.parse(localStorage.getItem('xi_assistant_events')) || [];
 
-        window.onload = function() {
+            console.log("库加载成功，开始渲染...");
+            
             renderHeader();
             renderCalendar();
             initSpeech();
+            
+            // 绑定事件
             document.getElementById('micBtn').addEventListener('click', toggleRecording);
-            log("系统加载完成");
-        };
+            console.log("系统就绪，等待操作。");
 
-        // --- 自定义弹窗逻辑 ---
-        function showCustomAlert(title, msg, icon='⚠️') {
-            document.getElementById('alertTitle').innerText = title;
-            document.getElementById('alertMsg').innerText = msg;
-            document.getElementById('alertIcon').innerText = icon;
-            document.getElementById('customAlert').classList.remove('hidden');
-            document.getElementById('customAlert').classList.add('flex');
+        } catch (e) {
+            console.log("CRITICAL ERROR: " + e.message);
+            alert("启动错误: " + e.message);
         }
 
-        function closeCustomAlert() {
-            document.getElementById('customAlert').classList.add('hidden');
-            document.getElementById('customAlert').classList.remove('flex');
+        // --- 功能函数 ---
+
+        function forceTestModal() {
+            console.log("用户点击强制测试...");
+            openEditModal(dayjs().format('YYYY-MM-DD'), "测试内容");
         }
 
-        // --- 核心日历渲染 ---
-        function renderCalendar() {
-            const grid = document.getElementById('calendarGrid');
-            grid.innerHTML = '';
-            const startOfMonth = state.currentDate.startOf('month');
-            const daysInMonth = state.currentDate.daysInMonth();
-            const startDay = startOfMonth.day();
-
-            for (let i = 0; i < startDay; i++) {
-                grid.innerHTML += `<div class="calendar-cell bg-gray-50"></div>`;
-            }
-
-            for (let i = 1; i <= daysInMonth; i++) {
-                const dateObj = state.currentDate.date(i);
-                const dateStr = dateObj.format('YYYY-MM-DD');
-                const isToday = dateStr === dayjs().format('YYYY-MM-DD');
-                const dayEvents = state.events.filter(e => e.date === dateStr);
-
-                const cell = document.createElement('div');
-                cell.className = `calendar-cell p-1 relative cursor-pointer active:bg-gray-100 ${isToday ? 'bg-blue-50/50' : 'bg-white'}`;
-                cell.onclick = () => openDetailModal(dateStr);
-
-                let dateHtml = `<div class="text-right mb-1"><span class="text-xs font-bold ${isToday ? 'text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full' : 'text-gray-700'}">${i}</span></div>`;
-                
-                let eventsHtml = '';
-                dayEvents.slice(0, 3).forEach(e => {
-                    let colorClass = "bg-gray-100 text-gray-600";
-                    if(e.content.includes("风电")) colorClass = "bg-cyan-100 text-cyan-700";
-                    if(e.content.includes("储能")) colorClass = "bg-green-100 text-green-700";
-                    if(e.content.includes("交易")) colorClass = "bg-purple-100 text-purple-700";
-                    eventsHtml += `<div class="event-tag ${colorClass}">${e.content}</div>`;
-                });
-                if(dayEvents.length > 3) eventsHtml += `<div class="text-[9px] text-gray-400 pl-1">+${dayEvents.length - 3}</div>`;
-
-                cell.innerHTML = dateHtml + `<div class="flex flex-col gap-[2px]">${eventsHtml}</div>`;
-                grid.appendChild(cell);
-            }
-        }
-
-        // --- 交互与视图 ---
         function renderHeader() {
             document.getElementById('headerDate').innerText = dayjs().format('YYYY年M月D日 dddd');
             document.getElementById('currentMonthLabel').innerText = state.currentDate.format('M月');
         }
 
-        function changeMonth(offset) {
-            state.currentDate = state.currentDate.add(offset, 'month');
+        function renderCalendar() {
+            var grid = document.getElementById('calendarGrid');
+            grid.innerHTML = '';
+            var start = state.currentDate.startOf('month');
+            var days = state.currentDate.daysInMonth();
+            var offset = start.day();
+
+            for(var i=0; i<offset; i++) grid.innerHTML += '<div class="calendar-cell bg-gray-50"></div>';
+
+            for(var i=1; i<=days; i++) {
+                var dateStr = state.currentDate.date(i).format('YYYY-MM-DD');
+                var isToday = dateStr === dayjs().format('YYYY-MM-DD');
+                var dayEvents = state.events.filter(e => e.date === dateStr);
+                
+                var cell = document.createElement('div');
+                cell.className = 'calendar-cell p-1 relative ' + (isToday ? 'bg-blue-50' : 'bg-white');
+                cell.innerHTML = '<div class="text-right text-xs font-bold mb-1 '+(isToday?'text-blue-600':'text-gray-700')+'">'+i+'</div>';
+                
+                dayEvents.forEach(e => {
+                    cell.innerHTML += '<div class="event-tag bg-gray-100 text-gray-600">'+e.content+'</div>';
+                });
+                
+                // 使用闭包防止变量污染
+                (function(d){ cell.onclick = function(){ openEditModal(d); }; })(dateStr);
+                
+                grid.appendChild(cell);
+            }
+        }
+
+        function changeMonth(n) {
+            state.currentDate = state.currentDate.add(n, 'month');
             renderHeader();
             renderCalendar();
         }
 
-        function openDetailModal(dateStr) {
-            state.selectedDateStr = dateStr;
-            const dateObj = dayjs(dateStr);
-            document.getElementById('detailDate').innerText = dateObj.format('M月D日');
-            document.getElementById('detailWeekday').innerText = dateObj.format('dddd');
-            
-            const list = document.getElementById('dayEventList');
-            list.innerHTML = '';
-            
-            const dayEvents = state.events.filter(e => e.date === dateStr);
-            if(dayEvents.length === 0) {
-                list.innerHTML = `<div class="text-center py-8 text-gray-400 text-sm">暂无安排</div>`;
-            } else {
-                dayEvents.forEach(e => {
-                    list.innerHTML += `
-                        <div class="flex items-start p-3 bg-gray-50 rounded-xl border border-gray-100">
-                            <div class="w-12 text-xs font-bold text-gray-500 pt-0.5">${e.time || '--:--'}</div>
-                            <div class="flex-1 text-sm font-medium text-gray-800 break-all">${e.content}</div>
-                            <button onclick="deleteEvent('${e.id}')" class="text-gray-300 px-2"><i class="fas fa-times"></i></button>
-                        </div>
-                    `;
-                });
+        // --- 简单的显示控制 ---
+        function openEditModal(date, content, time) {
+            console.log("尝试打开弹窗: " + date);
+            try {
+                var modal = document.getElementById('editModal');
+                modal.style.display = 'flex'; // 强制改为 flex 显示
+                
+                document.getElementById('editDate').value = date || '';
+                document.getElementById('editContent').value = content || '';
+                document.getElementById('editTime').value = time || dayjs().format('HH:mm');
+                console.log("弹窗指令已发送");
+            } catch(e) {
+                console.log("弹窗失败: " + e.message);
             }
-            document.getElementById('detailModal').classList.remove('hidden');
-        }
-
-        function closeDetailModal() {
-            document.getElementById('detailModal').classList.add('hidden');
-        }
-
-        function openEditModal(dateStr, content='', time='') {
-            log(`打开编辑框: ${dateStr} ${content}`);
-            closeDetailModal();
-            
-            document.getElementById('editContent').value = content;
-            document.getElementById('editDate').value = dateStr || dayjs().format('YYYY-MM-DD');
-            document.getElementById('editTime').value = time || dayjs().format('HH:mm');
-            
-            document.getElementById('editModal').classList.remove('hidden');
-            // 简单的聚焦，不强求光标位置，避免键盘问题
-            setTimeout(() => document.getElementById('editContent').focus(), 100);
         }
 
         function closeEditModal() {
-            document.getElementById('editModal').classList.add('hidden');
+            document.getElementById('editModal').style.display = 'none';
         }
 
         function saveEvent() {
-            const content = document.getElementById('editContent').value.trim();
-            const date = document.getElementById('editDate').value;
-            const time = document.getElementById('editTime').value;
-
-            if(!content) return showCustomAlert('提示', '请填写工作内容', '📝');
-
-            state.events.push({ id: Date.now().toString(), content, date, time });
+            var content = document.getElementById('editContent').value;
+            var date = document.getElementById('editDate').value;
+            var time = document.getElementById('editTime').value;
+            
+            if(!content) return alert("写点内容吧");
+            
+            state.events.push({ id: Date.now().toString(), content: content, date: date, time: time });
             localStorage.setItem('xi_assistant_events', JSON.stringify(state.events));
             
             closeEditModal();
             renderCalendar();
-            openDetailModal(date);
+            console.log("保存成功");
         }
 
-        function deleteEvent(id) {
-            if(confirm('确定删除吗？')) {
-                state.events = state.events.filter(e => e.id !== id);
-                localStorage.setItem('xi_assistant_events', JSON.stringify(state.events));
-                renderCalendar();
-                openDetailModal(state.selectedDateStr);
-            }
-        }
-
-        // --- 语音逻辑 (Debug版) ---
+        // --- 语音逻辑 ---
         function initSpeech() {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!SpeechRecognition) {
-                log("Fatal: 浏览器不支持语音 API");
+            var SpeechClass = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if(!SpeechClass) {
+                console.log("⚠️ 警告: 此浏览器不支持语音 API");
+                document.getElementById('micBtn').style.backgroundColor = '#ccc';
                 return;
             }
-
-            try {
-                recognition = new SpeechRecognition();
-                recognition.lang = 'zh-CN';
-                recognition.continuous = false;
-                recognition.interimResults = false;
-
-                recognition.onstart = () => {
-                    state.isRecording = true;
-                    updateMicUI(true);
-                    showStatus("正在聆听...");
-                    log("录音开始 (onstart)");
-                };
-
-                recognition.onend = () => {
-                    state.isRecording = false;
-                    updateMicUI(false);
-                    showStatus("");
-                    log("录音结束 (onend)");
-                };
-
-                recognition.onresult = (event) => {
-                    const text = event.results[0][0].transcript;
-                    log(`识别成功: "${text}"`);
-                    showStatus("识别成功");
-                    processVoice(text);
-                };
-
-                recognition.onerror = (event) => {
-                    log(`录音错误: ${event.error}`);
-                    showCustomAlert('出错了', `语音识别错误: ${event.error}`, '🎤');
-                };
-            } catch (e) {
-                log(`Init Error: ${e.message}`);
-            }
-        }
-
-        function updateMicUI(isActive) {
-            const btn = document.getElementById('micBtn');
-            if(isActive) {
-                btn.parentElement.classList.add('mic-active');
-                btn.classList.replace('bg-blue-600', 'bg-red-500');
-            } else {
-                btn.parentElement.classList.remove('mic-active');
-                btn.classList.replace('bg-red-500', 'bg-blue-600');
-            }
+            recognition = new SpeechClass();
+            recognition.lang = 'zh-CN';
+            recognition.continuous = false;
+            
+            recognition.onstart = function() {
+                state.isRecording = true;
+                document.getElementById('micBtn').classList.replace('bg-blue-600', 'bg-red-500');
+                document.getElementById('statusTip').style.opacity = 1;
+                document.getElementById('statusTip').innerText = "正在听...";
+                console.log("录音开始...");
+            };
+            
+            recognition.onend = function() {
+                state.isRecording = false;
+                document.getElementById('micBtn').classList.replace('bg-red-500', 'bg-blue-600');
+                document.getElementById('statusTip').style.opacity = 0;
+                console.log("录音结束");
+            };
+            
+            recognition.onresult = function(event) {
+                var text = event.results[0][0].transcript;
+                console.log("识别结果: " + text);
+                processVoice(text);
+            };
+            
+            recognition.onerror = function(e) {
+                console.log("录音报错: " + e.error);
+                alert("语音错误: " + e.error);
+            };
         }
 
         function toggleRecording() {
-            if(!recognition) return showCustomAlert('不支持', '您的浏览器不支持语音功能', '❌');
-            
-            if(state.isRecording) {
-                recognition.stop();
-            } else {
+            if(!recognition) return alert("浏览器不支持语音，请手动添加");
+            if(state.isRecording) recognition.stop();
+            else {
                 try {
                     recognition.start();
-                    log("调用 start()...");
+                    console.log("启动录音指令...");
                 } catch(e) {
-                    log(`Start Error: ${e.message}`);
-                    showCustomAlert('无法启动', '请刷新页面重试', '🔄');
+                    console.log("启动异常: " + e.message);
                 }
             }
         }
 
-        function showStatus(text) {
-            const el = document.getElementById('statusTip');
-            el.innerText = text;
-            el.style.opacity = text ? "1" : "0";
-        }
-
         function processVoice(text) {
-            let targetDate = dayjs();
-            let content = text;
+            // 简单的逻辑
+            var date = dayjs();
+            if(text.includes('明天')) date = date.add(1, 'day');
+            if(text.includes('后天')) date = date.add(2, 'day');
             
-            if(text.includes('明天')) { targetDate = targetDate.add(1, 'day'); content = content.replace(/明天/g, ''); }
-            else if(text.includes('后天')) { targetDate = targetDate.add(2, 'day'); content = content.replace(/后天/g, ''); }
-            else if(text.includes('下周一')) { targetDate = targetDate.day(8); content = content.replace(/下周一/g, ''); }
-            
-            let targetTime = dayjs().format('HH:mm');
-            const timeMatch = text.match(/(上午|下午|晚上)?(\d{1,2})点(\d{1,2})?/);
-            if(timeMatch) {
-                let h = parseInt(timeMatch[2]);
-                if((timeMatch[1] === '下午' || timeMatch[1] === '晚上') && h < 12) h += 12;
-                let m = timeMatch[3] ? parseInt(timeMatch[3]) : 0;
-                targetTime = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-                content = content.replace(timeMatch[0], '').replace('分','');
-            }
-
-            log(`解析结果: ${targetDate.format('MM-DD')} ${targetTime} ${content}`);
-            // 直接调用打开弹窗，确保在回调链中执行
-            setTimeout(() => {
-                openEditModal(targetDate.format('YYYY-MM-DD'), content.trim(), targetTime);
-            }, 100);
+            var content = text.replace(/明天|后天/g, '');
+            openEditModal(date.format('YYYY-MM-DD'), content);
         }
     </script>
 </body>
