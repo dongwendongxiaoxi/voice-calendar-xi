@@ -101,6 +101,12 @@
         <div class="grid grid-cols-7 border-l border-gray-100" id="calendarGrid">
             <!-- 动态生成格子 -->
         </div>
+        
+        <!-- 版本号标识 (用于确认是否更新成功) -->
+        <div class="text-center py-4 text-gray-300 text-[10px]">
+            System v2.1 Ready
+        </div>
+        
         <!-- 底部留白给按钮 -->
         <div class="h-24"></div>
     </div>
@@ -332,12 +338,13 @@
             }
         }
 
-        // --- 核心：语音识别 (增强容错版) ---
+        // --- 核心：语音识别 (v2.1 修复版) ---
         function initSpeech() {
             // 兼容性检查
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (!SpeechRecognition) {
-                return console.error("浏览器不支持语音 API");
+                // 如果是电脑版 Chrome，没问题。如果是其他浏览器，可能不支持。
+                return console.warn("当前浏览器可能不支持语音功能");
             }
 
             recognition = new SpeechRecognition();
@@ -365,32 +372,47 @@
 
             recognition.onresult = (event) => {
                 const text = event.results[0][0].transcript;
-                showStatus("识别成功！正在分析...");
+                showStatus("识别成功！");
                 processVoice(text);
             };
 
+            // 这里的报错会直接弹窗，方便排查
             recognition.onerror = (event) => {
                 console.error("Speech Error:", event.error);
                 let msg = "听不清，请重试";
-                if(event.error === 'not-allowed') msg = "请允许麦克风权限";
-                if(event.error === 'network') msg = "网络连接失败";
+                
+                if(event.error === 'not-allowed') {
+                    msg = "麦克风权限被拒绝！请点击地址栏的小锁图标开启权限。";
+                    alert(msg); // 强制弹窗
+                }
+                else if(event.error === 'network') {
+                    msg = "网络连接失败，语音服务无法连接。";
+                    alert(msg);
+                }
+                else if(event.error === 'no-speech') {
+                    msg = "未检测到声音";
+                }
+                
                 showStatus(msg);
                 setTimeout(() => showStatus(""), 2000);
             };
         }
 
         function toggleRecording() {
-            if (!recognition) return alert("您的浏览器暂不支持语音功能，请使用 Safari 或 Chrome");
+            // 如果连对象都没生成，说明浏览器不支持
+            if (!recognition) {
+                return alert("您的浏览器不支持语音识别。\n建议使用：Chrome (安卓/电脑) 或 Safari (iPhone)");
+            }
             
             if (state.isRecording) {
                 recognition.stop();
             } else {
-                // iOS 必须由用户点击触发，不能自动触发
                 try {
                     recognition.start();
                 } catch (e) {
                     console.error(e);
-                    alert("无法启动录音，请刷新页面重试");
+                    // 如果因为频繁点击报错，重新尝试
+                    alert("启动录音失败，请刷新页面重试。");
                 }
             }
         }
