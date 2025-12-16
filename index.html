@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>西姐的小助理(最终版)</title>
+    <title>西姐的小助理(实时版)</title>
 
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -16,13 +16,23 @@
         body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; background-color: #F5F5F7; -webkit-tap-highlight-color: transparent; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         
-        .mic-wave {
-            position: absolute; width: 100%; height: 100%;
-            border-radius: 50%; background-color: rgba(37, 99, 235, 0.3);
-            opacity: 0; z-index: -1; transform: scale(0.8);
+        /* 录音波纹 */
+        .wave-container {
+            display: flex; justify-content: center; align-items: center; height: 40px; gap: 4px;
         }
-        .mic-active .mic-wave { animation: ripple 1.5s infinite; background-color: rgba(239, 68, 68, 0.4); }
-        @keyframes ripple { 0% { transform: scale(0.8); opacity: 0.6; } 100% { transform: scale(1.6); opacity: 0; } }
+        .wave-bar {
+            width: 4px; height: 10px; background-color: #3B82F6; border-radius: 2px;
+            animation: wave 1s infinite ease-in-out;
+        }
+        .wave-bar:nth-child(1) { animation-delay: 0.0s; }
+        .wave-bar:nth-child(2) { animation-delay: 0.1s; }
+        .wave-bar:nth-child(3) { animation-delay: 0.2s; }
+        .wave-bar:nth-child(4) { animation-delay: 0.3s; }
+        .wave-bar:nth-child(5) { animation-delay: 0.4s; }
+        @keyframes wave {
+            0%, 100% { height: 10px; opacity: 0.5; }
+            50% { height: 25px; opacity: 1; }
+        }
 
         .calendar-cell { min-height: 85px; border-right: 1px solid #f0f0f0; border-bottom: 1px solid #f0f0f0; }
         .calendar-cell:nth-child(7n) { border-right: none; }
@@ -39,7 +49,7 @@
             <div>
                 <div class="text-xs text-gray-500 font-medium mb-0.5" id="headerDate">...</div>
                 <h1 class="text-2xl font-bold text-black tracking-tight flex items-center">
-                    西姐的小助理 <span class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full ml-2">v3.3</span>
+                    西姐的小助理 <span class="text-xs bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full ml-2">v3.5</span>
                 </h1>
             </div>
             <div class="flex bg-white rounded-lg p-1 shadow-sm">
@@ -49,12 +59,11 @@
             </div>
         </div>
         
-        <!-- 手动重置按钮 (如果卡死点这个) -->
         <div class="flex gap-2">
             <button onclick="window.location.reload()" class="bg-gray-200 text-gray-600 px-3 py-1.5 rounded text-xs font-bold flex-1">
                 🔄 刷新重置
             </button>
-            <button onclick="forceTestModal()" class="bg-blue-100 text-blue-700 px-3 py-1.5 rounded text-xs font-bold flex-1">
+            <button onclick="testModal()" class="bg-blue-100 text-blue-700 px-3 py-1.5 rounded text-xs font-bold flex-1">
                 🛠 测试弹窗
             </button>
         </div>
@@ -79,24 +88,34 @@
 
     <!-- 底部按钮 -->
     <div class="fixed bottom-8 left-0 w-full flex flex-col items-center justify-center z-40 safe-area-bottom pointer-events-none">
-        <div class="bg-black/80 backdrop-blur-md text-white px-4 py-2 rounded-full text-xs font-bold mb-3 transition-opacity opacity-0" id="statusTip">
-            准备就绪
-        </div>
         <div class="relative group pointer-events-auto">
-            <div class="mic-wave"></div>
             <button id="micBtn" class="w-16 h-16 bg-blue-600 rounded-full text-white shadow-xl flex items-center justify-center text-2xl transition-transform active:scale-95">
                 <i class="fas fa-microphone"></i>
             </button>
         </div>
+        <p class="text-[10px] text-gray-400 mt-2 font-medium">点击录音</p>
     </div>
 
-    <!-- 编辑弹窗 (使用 Tailwind 确保样式正确) -->
+    <!-- 全能弹窗 (直接把输入框和录音状态做到一起) -->
     <div id="editModal" class="hidden fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-        <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-2xl transform transition-all">
+        <div class="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl transition-all relative">
+            
+            <!-- 录音时的覆盖层 -->
+            <div id="listeningOverlay" class="hidden absolute inset-0 bg-white/95 z-10 flex-col items-center justify-center rounded-2xl">
+                <div class="wave-container mb-4">
+                    <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-2">正在聆听...</h3>
+                <p id="liveText" class="text-sm text-gray-500 px-4 text-center min-h-[20px]">请说话...</p>
+                <button onclick="stopMic()" class="mt-6 px-6 py-2 bg-red-100 text-red-600 rounded-full font-bold text-xs">
+                    停止并生成
+                </button>
+            </div>
+
+            <!-- 编辑界面 (默认显示) -->
             <h3 class="text-lg font-bold mb-4 text-center text-gray-800">📅 记录日程</h3>
             
-            <label class="text-xs text-gray-400 font-bold ml-1">内容</label>
-            <textarea id="editContent" rows="3" class="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl mb-3 text-base focus:ring-2 focus:ring-blue-500 outline-none" placeholder="例如：明天下午三点开会"></textarea>
+            <textarea id="editContent" rows="3" class="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl mb-3 text-base focus:ring-2 focus:ring-blue-500 outline-none" placeholder="内容会出现在这里..."></textarea>
             
             <div class="flex gap-2 mb-5">
                 <div class="flex-1">
@@ -117,7 +136,6 @@
     </div>
 
     <script>
-        // --- 初始化逻辑 ---
         dayjs.locale('zh-cn');
         
         var state = {
@@ -132,44 +150,126 @@
         window.onload = function() {
             renderHeader();
             renderCalendar();
-            
-            // 绑定录音按钮
-            document.getElementById('micBtn').addEventListener('click', handleMicClick);
+            // 绑定事件
+            document.getElementById('micBtn').addEventListener('click', startRecordingFlow);
         };
 
-        // --- 核心：万能弹窗函数 ---
-        function openEditModal(date, content, time) {
+        // --- 核心改动：先弹窗，再录音 ---
+        function startRecordingFlow() {
+            if(!SpeechClass) return alert("浏览器不支持语音，请手动输入");
+
+            // 1. 先把弹窗打开！(这是用户点击触发的，绝对合法)
+            var modal = document.getElementById('editModal');
+            var overlay = document.getElementById('listeningOverlay');
+            
+            modal.classList.remove('hidden');
+            overlay.classList.remove('hidden'); // 显示波纹层
+            overlay.classList.add('flex');
+            
+            document.getElementById('liveText').innerText = "等待声音...";
+            
+            // 2. 初始化录音机
+            if(recognition) {
+                try { recognition.abort(); } catch(e){}
+                recognition = null;
+            }
+
             try {
-                var modal = document.getElementById('editModal');
-                // 1. 填充数据
-                document.getElementById('editDate').value = date || dayjs().format('YYYY-MM-DD');
-                document.getElementById('editContent').value = content || '';
-                document.getElementById('editTime').value = time || dayjs().format('HH:mm');
-                
-                // 2. 显示弹窗 (移除 hidden 类)
-                modal.classList.remove('hidden');
-                
-                // 3. 聚焦输入框 (稍微延时，防止键盘跳出卡顿)
-                setTimeout(() => document.getElementById('editContent').focus(), 100);
+                recognition = new SpeechClass();
+                recognition.lang = 'zh-CN';
+                recognition.continuous = false;
+                recognition.interimResults = true; // 开启实时显示！
+
+                recognition.onstart = function() {
+                    state.isRecording = true;
+                    document.getElementById('liveText').innerText = "正在听...";
+                };
+
+                recognition.onresult = function(event) {
+                    var text = event.results[0][0].transcript;
+                    // 实时把字打在屏幕上，让用户看到反应
+                    document.getElementById('liveText').innerText = text;
+                    
+                    if(event.results[0].isFinal) {
+                        finishRecording(text);
+                    }
+                };
+
+                recognition.onerror = function(e) {
+                    // 如果出错，也要关闭波纹层，不然就死机了
+                    if(e.error !== 'no-speech') {
+                        alert("识别错误: " + e.error);
+                        stopMic(); 
+                    }
+                };
+
+                recognition.onend = function() {
+                    // 录音自然结束
+                    if(state.isRecording) {
+                        stopMic();
+                    }
+                };
+
+                recognition.start();
+
             } catch(e) {
-                // 4. 兜底方案：如果弹窗失败，使用原生 Prompt
-                console.error(e);
-                var fallbackContent = prompt("弹窗加载失败，请直接输入内容：", content || "");
-                if(fallbackContent) {
-                    saveEventDirectly(fallbackContent, date, time);
-                }
+                alert("启动麦克风失败: " + e.message);
+                stopMic();
             }
         }
 
+        function stopMic() {
+            state.isRecording = false;
+            // 停止录音机
+            if(recognition) {
+                try { recognition.stop(); } catch(e){}
+            }
+            // 隐藏波纹层，露出输入框
+            var overlay = document.getElementById('listeningOverlay');
+            overlay.classList.add('hidden');
+            overlay.classList.remove('flex');
+        }
+
+        function finishRecording(text) {
+            stopMic();
+            processVoice(text);
+        }
+
+        // --- 数据处理 ---
+        function processVoice(text) {
+            var date = dayjs();
+            if(text.includes('明天')) date = date.add(1, 'day');
+            if(text.includes('后天')) date = date.add(2, 'day');
+            if(text.includes('下周一')) date = date.day(8);
+
+            var content = text.replace(/明天|后天|下周一/g, '');
+            
+            // 填入输入框
+            document.getElementById('editDate').value = date.format('YYYY-MM-DD');
+            document.getElementById('editContent').value = content;
+            document.getElementById('editTime').value = dayjs().format('HH:mm');
+        }
+
+        // --- 常规 UI ---
         function closeEditModal() {
             document.getElementById('editModal').classList.add('hidden');
+            stopMic(); // 关窗即停
         }
 
-        function forceTestModal() {
-            openEditModal(dayjs().format('YYYY-MM-DD'), "测试弹窗是否正常");
+        function testModal() {
+            // 手动打开，不显示波纹层
+            var modal = document.getElementById('editModal');
+            var overlay = document.getElementById('listeningOverlay');
+            
+            modal.classList.remove('hidden');
+            overlay.classList.add('hidden');
+            overlay.classList.remove('flex');
+            
+            document.getElementById('editDate').value = dayjs().format('YYYY-MM-DD');
+            document.getElementById('editTime').value = dayjs().format('HH:mm');
+            document.getElementById('editContent').value = "手动添加测试";
         }
 
-        // --- 日历渲染 ---
         function renderHeader() {
             document.getElementById('headerDate').innerText = dayjs().format('YYYY年M月D日 dddd');
             document.getElementById('currentMonthLabel').innerText = state.currentDate.format('M月');
@@ -194,17 +294,18 @@
                 cell.innerHTML = '<div class="text-right text-xs font-bold mb-1 '+(isToday?'text-blue-600':'text-gray-700')+'">'+i+'</div>';
                 
                 dayEvents.forEach(e => {
-                    // 简单的样式
                     var color = "bg-gray-100 text-gray-600";
                     if(e.content.includes("风电")) color = "bg-cyan-100 text-cyan-800";
                     if(e.content.includes("储能")) color = "bg-green-100 text-green-800";
                     cell.innerHTML += '<div class="event-tag '+color+'">'+e.content+'</div>';
                 });
 
-                // 闭包绑定点击
-                (function(d){ 
-                    cell.onclick = function(){ openEditModal(d); }; 
-                })(dateStr);
+                (function(d){ cell.onclick = function(){ 
+                    document.getElementById('editDate').value = d;
+                    document.getElementById('editContent').value = '';
+                    document.getElementById('editTime').value = dayjs().format('HH:mm');
+                    testModal(); // 复用测试弹窗的逻辑来打开编辑
+                }; })(dateStr);
                 
                 grid.appendChild(cell);
             }
@@ -216,15 +317,11 @@
             renderCalendar();
         }
 
-        // --- 保存逻辑 ---
         function saveEvent() {
             var content = document.getElementById('editContent').value;
             var date = document.getElementById('editDate').value;
             var time = document.getElementById('editTime').value;
-            saveEventDirectly(content, date, time);
-        }
-
-        function saveEventDirectly(content, date, time) {
+            
             if(!content) return alert("内容不能为空");
             
             state.events.push({ id: Date.now().toString(), content: content, date: date, time: time });
@@ -232,89 +329,6 @@
             
             closeEditModal();
             renderCalendar();
-        }
-
-        // --- 语音逻辑 (终极修正版) ---
-        function handleMicClick() {
-            if(!SpeechClass) return alert("浏览器不支持，请手动记录");
-
-            // 如果正在录音，点击则是停止
-            if(state.isRecording) {
-                if(recognition) recognition.stop();
-                return;
-            }
-
-            // 如果没在录音，点击则是开始
-            startListening();
-        }
-
-        function startListening() {
-            // 1. 销毁旧实例 (关键！)
-            if(recognition) {
-                try { recognition.abort(); } catch(e){}
-                recognition = null;
-            }
-
-            // 2. 创建新实例
-            try {
-                recognition = new SpeechClass();
-                recognition.lang = 'zh-CN';
-                recognition.continuous = false;
-                
-                recognition.onstart = function() {
-                    state.isRecording = true;
-                    updateMicStatus(true, "正在听...");
-                };
-                
-                recognition.onend = function() {
-                    state.isRecording = false;
-                    updateMicStatus(false, "");
-                };
-                
-                recognition.onresult = function(event) {
-                    var text = event.results[0][0].transcript;
-                    updateMicStatus(false, "识别成功: " + text);
-                    processVoice(text);
-                };
-                
-                recognition.onerror = function(e) {
-                    updateMicStatus(false, "错误: " + e.error);
-                    if(e.error === 'not-allowed') alert("请允许麦克风权限");
-                };
-
-                recognition.start();
-
-            } catch(e) {
-                alert("启动失败，请刷新页面: " + e.message);
-            }
-        }
-
-        function updateMicStatus(isActive, text) {
-            var btn = document.getElementById('micBtn');
-            var tip = document.getElementById('statusTip');
-            
-            if(isActive) {
-                btn.parentElement.classList.add('mic-active');
-                btn.classList.replace('bg-blue-600', 'bg-red-500');
-                tip.style.opacity = 1;
-            } else {
-                btn.parentElement.classList.remove('mic-active');
-                btn.classList.replace('bg-red-500', 'bg-blue-600');
-                if(!text) tip.style.opacity = 0;
-            }
-            if(text) tip.innerText = text;
-        }
-
-        function processVoice(text) {
-            var date = dayjs();
-            if(text.includes('明天')) date = date.add(1, 'day');
-            if(text.includes('后天')) date = date.add(2, 'day');
-            if(text.includes('下周一')) date = date.day(8);
-
-            var content = text.replace(/明天|后天|下周一/g, '');
-            
-            // 立即打开弹窗，不使用 setTimeout，防止被浏览器休眠
-            openEditModal(date.format('YYYY-MM-DD'), content);
         }
     </script>
 </body>
