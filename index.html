@@ -5,95 +5,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>西姐的小助理(稳定版)</title>
+    <title>西姐的小助理(最终版)</title>
 
-    <!-- 1. 优先加载样式，防止白屏 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <!-- 2. 全局错误捕获系统 (放在最前面) -->
-    <style>
-        #error-overlay {
-            display: none;
-            position: fixed; top: 0; left: 0; width: 100%; height: auto;
-            background: rgba(255, 0, 0, 0.9); color: white;
-            z-index: 9999; padding: 20px; font-size: 12px;
-            white-space: pre-wrap; word-break: break-all;
-        }
-        
-        #debugConsole {
-            display: block; /* 强制显示 */
-            background: #1a1a1a; color: #00ff00;
-            font-family: monospace; font-size: 11px;
-            padding: 10px; border-top: 2px solid #333;
-            height: 150px; overflow-y: scroll;
-            margin-bottom: 80px; /* 给底部按钮留位置 */
-        }
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/locale/zh-cn.js"></script>
 
-        /* 基础样式 */
-        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background-color: #F5F5F7; -webkit-tap-highlight-color: transparent; }
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; background-color: #F5F5F7; -webkit-tap-highlight-color: transparent; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         
         .mic-wave {
             position: absolute; width: 100%; height: 100%;
-            border-radius: 50%; background-color: rgba(239, 68, 68, 0.4);
-            opacity: 0; z-index: -1;
+            border-radius: 50%; background-color: rgba(37, 99, 235, 0.3);
+            opacity: 0; z-index: -1; transform: scale(0.8);
         }
-        .mic-active .mic-wave { animation: ripple 1.5s infinite; }
-        @keyframes ripple { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(1.6); opacity: 0; } }
+        .mic-active .mic-wave { animation: ripple 1.5s infinite; background-color: rgba(239, 68, 68, 0.4); }
+        @keyframes ripple { 0% { transform: scale(0.8); opacity: 0.6; } 100% { transform: scale(1.6); opacity: 0; } }
 
         .calendar-cell { min-height: 85px; border-right: 1px solid #f0f0f0; border-bottom: 1px solid #f0f0f0; }
         .calendar-cell:nth-child(7n) { border-right: none; }
         .event-tag { font-size: 10px; padding: 2px 4px; border-radius: 3px; margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        input, textarea { -webkit-appearance: none; border-radius: 0.75rem; }
+        input, textarea { -webkit-appearance: none; border-radius: 0.5rem; }
         .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
     </style>
-
-    <script>
-        // 立即接管错误输出
-        window.onerror = function(msg, url, line, col, error) {
-            var errorBox = document.getElementById('error-overlay');
-            if(errorBox) {
-                errorBox.style.display = 'block';
-                errorBox.innerHTML += "🔴 错误: " + msg + "\n位置: " + line + ":" + col + "\n\n";
-            }
-            // 同时打印到控制台
-            var consoleDiv = document.getElementById('debugConsole');
-            if(consoleDiv) {
-                consoleDiv.innerHTML = "<div style='color:red'>> ERROR: " + msg + "</div>" + consoleDiv.innerHTML;
-            }
-            return false;
-        };
-
-        // 接管 console.log
-        var oldLog = console.log;
-        console.log = function(message) {
-            oldLog.apply(console, arguments);
-            var consoleDiv = document.getElementById('debugConsole');
-            if(consoleDiv) {
-                var p = document.createElement('div');
-                p.innerText = "> " + message;
-                consoleDiv.insertBefore(p, consoleDiv.firstChild);
-            }
-        };
-    </script>
-
-    <!-- 3. 加载外部库 (放在后面，防止阻塞错误系统) -->
-    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/locale/zh-cn.js"></script>
 </head>
 <body class="h-screen flex flex-col text-gray-800 bg-white">
-
-    <!-- 红色错误层 (平时隐藏，报错时自动出现) -->
-    <div id="error-overlay"></div>
 
     <!-- 顶部栏 -->
     <header class="bg-[#F5F5F7] px-4 pt-12 pb-3 flex flex-col border-b border-gray-200 sticky top-0 z-20">
         <div class="flex justify-between items-end mb-2">
             <div>
-                <div class="text-xs text-gray-500 font-medium mb-0.5" id="headerDate">加载中...</div>
+                <div class="text-xs text-gray-500 font-medium mb-0.5" id="headerDate">...</div>
                 <h1 class="text-2xl font-bold text-black tracking-tight flex items-center">
-                    西姐的小助理 v3.2
+                    西姐的小助理 <span class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full ml-2">v3.3</span>
                 </h1>
             </div>
             <div class="flex bg-white rounded-lg p-1 shadow-sm">
@@ -103,10 +49,15 @@
             </div>
         </div>
         
-        <!-- 强制测试按钮 -->
-        <button onclick="forceTestModal()" class="bg-blue-100 text-blue-700 px-3 py-2 rounded-lg text-xs font-bold w-full text-center border border-blue-200">
-            🛠 点我测试弹窗 (若没反应则是样式问题)
-        </button>
+        <!-- 手动重置按钮 (如果卡死点这个) -->
+        <div class="flex gap-2">
+            <button onclick="window.location.reload()" class="bg-gray-200 text-gray-600 px-3 py-1.5 rounded text-xs font-bold flex-1">
+                🔄 刷新重置
+            </button>
+            <button onclick="forceTestModal()" class="bg-blue-100 text-blue-700 px-3 py-1.5 rounded text-xs font-bold flex-1">
+                🛠 测试弹窗
+            </button>
+        </div>
     </header>
 
     <!-- 星期头 -->
@@ -123,19 +74,15 @@
     <!-- 日历主体 -->
     <div class="flex-1 overflow-y-auto bg-white relative" id="calendarContainer">
         <div class="grid grid-cols-7 border-l border-gray-100" id="calendarGrid"></div>
-        
-        <div class="p-4">
-            <h3 class="text-xs font-bold text-gray-500 mb-2">系统运行日志 (实时):</h3>
-            <div id="debugConsole">初始化日志系统...</div>
-        </div>
-        
-        <div class="h-24"></div>
+        <div class="h-32"></div>
     </div>
 
     <!-- 底部按钮 -->
-    <div class="fixed bottom-8 left-0 w-full flex flex-col items-center justify-center z-40 safe-area-bottom">
-        <div class="bg-black/80 backdrop-blur-md text-white px-4 py-2 rounded-full text-xs font-bold mb-3 opacity-0 transition-opacity" id="statusTip">Ready</div>
-        <div class="relative group">
+    <div class="fixed bottom-8 left-0 w-full flex flex-col items-center justify-center z-40 safe-area-bottom pointer-events-none">
+        <div class="bg-black/80 backdrop-blur-md text-white px-4 py-2 rounded-full text-xs font-bold mb-3 transition-opacity opacity-0" id="statusTip">
+            准备就绪
+        </div>
+        <div class="relative group pointer-events-auto">
             <div class="mic-wave"></div>
             <button id="micBtn" class="w-16 h-16 bg-blue-600 rounded-full text-white shadow-xl flex items-center justify-center text-2xl transition-transform active:scale-95">
                 <i class="fas fa-microphone"></i>
@@ -143,67 +90,86 @@
         </div>
     </div>
 
-    <!-- 编辑弹窗 (使用最简单的 style display 控制，防止 class 失效) -->
-    <div id="editModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index:999; justify-content:center; items-align:center;">
-        <div style="position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5);" onclick="closeEditModal()"></div>
-        <div style="position:relative; width:90%; max-width:320px; background:white; padding:20px; border-radius:16px; margin-top: 30%;">
-            <h3 class="text-lg font-bold mb-4 text-center">日程记录</h3>
-            <textarea id="editContent" rows="3" class="w-full bg-gray-50 border p-3 rounded-lg mb-4" placeholder="说点什么..."></textarea>
-            <div class="flex gap-2 mb-4">
-                <input type="date" id="editDate" class="flex-1 border p-2 rounded-lg bg-gray-50">
-                <input type="time" id="editTime" class="w-24 border p-2 rounded-lg bg-gray-50">
+    <!-- 编辑弹窗 (使用 Tailwind 确保样式正确) -->
+    <div id="editModal" class="hidden fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-2xl transform transition-all">
+            <h3 class="text-lg font-bold mb-4 text-center text-gray-800">📅 记录日程</h3>
+            
+            <label class="text-xs text-gray-400 font-bold ml-1">内容</label>
+            <textarea id="editContent" rows="3" class="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl mb-3 text-base focus:ring-2 focus:ring-blue-500 outline-none" placeholder="例如：明天下午三点开会"></textarea>
+            
+            <div class="flex gap-2 mb-5">
+                <div class="flex-1">
+                    <label class="text-xs text-gray-400 font-bold ml-1">日期</label>
+                    <input type="date" id="editDate" class="w-full border border-gray-200 p-2.5 rounded-xl bg-gray-50 text-sm">
+                </div>
+                <div class="w-28">
+                    <label class="text-xs text-gray-400 font-bold ml-1">时间</label>
+                    <input type="time" id="editTime" class="w-full border border-gray-200 p-2.5 rounded-xl bg-gray-50 text-sm">
+                </div>
             </div>
-            <div class="flex gap-2">
-                <button onclick="closeEditModal()" class="flex-1 py-3 bg-gray-100 rounded-lg font-bold">取消</button>
-                <button onclick="saveEvent()" class="flex-1 py-3 bg-blue-600 text-white rounded-lg font-bold">保存</button>
+
+            <div class="flex gap-3">
+                <button onclick="closeEditModal()" class="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold active:bg-gray-200">取消</button>
+                <button onclick="saveEvent()" class="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-500/30 active:scale-95 transition">保存</button>
             </div>
         </div>
     </div>
 
     <script>
-        // 核心逻辑放在最后执行
+        // --- 初始化逻辑 ---
+        dayjs.locale('zh-cn');
         
-        // 0. 变量定义
         var state = {
-            currentDate: null,
-            events: [],
+            currentDate: dayjs(),
+            events: JSON.parse(localStorage.getItem('xi_assistant_events')) || [],
             isRecording: false
         };
+        
         var recognition = null;
         var SpeechClass = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-        // 1. 初始化入口
-        try {
-            console.log("脚本开始执行...");
-            
-            // 检查库是否加载
-            if(typeof dayjs === 'undefined') {
-                throw new Error("Dayjs 库加载失败，可能是网络问题");
-            }
-
-            dayjs.locale('zh-cn');
-            state.currentDate = dayjs();
-            state.events = JSON.parse(localStorage.getItem('xi_assistant_events')) || [];
-
-            console.log("库加载成功，开始渲染...");
-            
+        window.onload = function() {
             renderHeader();
             renderCalendar();
-            // 注意：不要在加载时直接 initSpeech，而是在用户点击时按需创建，这样更稳
-            console.log("系统就绪，等待操作。");
+            
+            // 绑定录音按钮
+            document.getElementById('micBtn').addEventListener('click', handleMicClick);
+        };
 
-        } catch (e) {
-            console.log("CRITICAL ERROR: " + e.message);
-            alert("启动错误: " + e.message);
+        // --- 核心：万能弹窗函数 ---
+        function openEditModal(date, content, time) {
+            try {
+                var modal = document.getElementById('editModal');
+                // 1. 填充数据
+                document.getElementById('editDate').value = date || dayjs().format('YYYY-MM-DD');
+                document.getElementById('editContent').value = content || '';
+                document.getElementById('editTime').value = time || dayjs().format('HH:mm');
+                
+                // 2. 显示弹窗 (移除 hidden 类)
+                modal.classList.remove('hidden');
+                
+                // 3. 聚焦输入框 (稍微延时，防止键盘跳出卡顿)
+                setTimeout(() => document.getElementById('editContent').focus(), 100);
+            } catch(e) {
+                // 4. 兜底方案：如果弹窗失败，使用原生 Prompt
+                console.error(e);
+                var fallbackContent = prompt("弹窗加载失败，请直接输入内容：", content || "");
+                if(fallbackContent) {
+                    saveEventDirectly(fallbackContent, date, time);
+                }
+            }
         }
 
-        // --- 功能函数 ---
+        function closeEditModal() {
+            document.getElementById('editModal').classList.add('hidden');
+        }
 
         function forceTestModal() {
-            console.log("用户点击强制测试...");
-            openEditModal(dayjs().format('YYYY-MM-DD'), "测试内容");
+            openEditModal(dayjs().format('YYYY-MM-DD'), "测试弹窗是否正常");
         }
 
+        // --- 日历渲染 ---
         function renderHeader() {
             document.getElementById('headerDate').innerText = dayjs().format('YYYY年M月D日 dddd');
             document.getElementById('currentMonthLabel').innerText = state.currentDate.format('M月');
@@ -228,11 +194,17 @@
                 cell.innerHTML = '<div class="text-right text-xs font-bold mb-1 '+(isToday?'text-blue-600':'text-gray-700')+'">'+i+'</div>';
                 
                 dayEvents.forEach(e => {
-                    cell.innerHTML += '<div class="event-tag bg-gray-100 text-gray-600">'+e.content+'</div>';
+                    // 简单的样式
+                    var color = "bg-gray-100 text-gray-600";
+                    if(e.content.includes("风电")) color = "bg-cyan-100 text-cyan-800";
+                    if(e.content.includes("储能")) color = "bg-green-100 text-green-800";
+                    cell.innerHTML += '<div class="event-tag '+color+'">'+e.content+'</div>';
                 });
-                
-                // 使用闭包防止变量污染
-                (function(d){ cell.onclick = function(){ openEditModal(d); }; })(dateStr);
+
+                // 闭包绑定点击
+                (function(d){ 
+                    cell.onclick = function(){ openEditModal(d); }; 
+                })(dateStr);
                 
                 grid.appendChild(cell);
             }
@@ -244,138 +216,105 @@
             renderCalendar();
         }
 
-        // --- 简单的显示控制 ---
-        function openEditModal(date, content, time) {
-            console.log("尝试打开弹窗: " + date);
-            try {
-                var modal = document.getElementById('editModal');
-                modal.style.display = 'flex'; // 强制改为 flex 显示
-                
-                document.getElementById('editDate').value = date || '';
-                document.getElementById('editContent').value = content || '';
-                document.getElementById('editTime').value = time || dayjs().format('HH:mm');
-                console.log("弹窗指令已发送");
-            } catch(e) {
-                console.log("弹窗失败: " + e.message);
-            }
-        }
-
-        function closeEditModal() {
-            document.getElementById('editModal').style.display = 'none';
-        }
-
+        // --- 保存逻辑 ---
         function saveEvent() {
             var content = document.getElementById('editContent').value;
             var date = document.getElementById('editDate').value;
             var time = document.getElementById('editTime').value;
-            
-            if(!content) return alert("写点内容吧");
+            saveEventDirectly(content, date, time);
+        }
+
+        function saveEventDirectly(content, date, time) {
+            if(!content) return alert("内容不能为空");
             
             state.events.push({ id: Date.now().toString(), content: content, date: date, time: time });
             localStorage.setItem('xi_assistant_events', JSON.stringify(state.events));
             
             closeEditModal();
             renderCalendar();
-            console.log("保存成功");
         }
 
-        // --- 语音逻辑 (重构版：每次都新建，防止假死) ---
-        
-        // 创建一个新的语音实例并绑定事件
-        function createRecognition() {
-            if(!SpeechClass) return null;
-            
-            var rec = new SpeechClass();
-            rec.lang = 'zh-CN';
-            rec.continuous = false;
-            
-            rec.onstart = function() {
-                state.isRecording = true;
-                document.getElementById('micBtn').classList.replace('bg-blue-600', 'bg-red-500');
-                document.getElementById('statusTip').style.opacity = 1;
-                document.getElementById('statusTip').innerText = "正在听...";
-                console.log(">> 录音机启动成功");
-            };
-            
-            rec.onend = function() {
-                console.log(">> 录音结束 (onend)");
-                state.isRecording = false;
-                document.getElementById('micBtn').classList.replace('bg-red-500', 'bg-blue-600');
-                document.getElementById('statusTip').style.opacity = 0;
-                
-                // 关键修正：防止僵尸实例
-                if(recognition) {
-                    try { recognition.abort(); } catch(e){}
-                    recognition = null; // 销毁引用
-                }
-            };
-            
-            rec.onresult = function(event) {
-                var text = event.results[0][0].transcript;
-                console.log(">> 识别内容: " + text);
-                processVoice(text);
-                // 识别到结果后，强制停止
-                rec.stop();
-            };
-            
-            rec.onerror = function(e) {
-                console.log(">> 录音报错: " + e.error);
-                if(e.error === 'not-allowed') alert("请允许麦克风权限");
-                // 报错也要销毁
-                recognition = null;
-                state.isRecording = false;
-                document.getElementById('micBtn').classList.replace('bg-red-500', 'bg-blue-600');
-            };
-            
-            return rec;
-        }
+        // --- 语音逻辑 (终极修正版) ---
+        function handleMicClick() {
+            if(!SpeechClass) return alert("浏览器不支持，请手动记录");
 
-        // 绑定按钮事件
-        document.getElementById('micBtn').addEventListener('click', function() {
-            if(!SpeechClass) return alert("浏览器不支持语音，请手动添加");
-            
-            // 如果正在录音，则停止
-            if(state.isRecording && recognition) {
-                console.log("用户手动停止");
-                try { recognition.stop(); } catch(e){}
+            // 如果正在录音，点击则是停止
+            if(state.isRecording) {
+                if(recognition) recognition.stop();
                 return;
             }
 
-            // 如果没在录音，则开始
-            console.log("用户点击开始录音...");
-            
-            // 安全策略：先尝试销毁旧的（如果有）
+            // 如果没在录音，点击则是开始
+            startListening();
+        }
+
+        function startListening() {
+            // 1. 销毁旧实例 (关键！)
             if(recognition) {
                 try { recognition.abort(); } catch(e){}
                 recognition = null;
             }
 
-            // 新建实例
+            // 2. 创建新实例
             try {
-                recognition = createRecognition();
+                recognition = new SpeechClass();
+                recognition.lang = 'zh-CN';
+                recognition.continuous = false;
+                
+                recognition.onstart = function() {
+                    state.isRecording = true;
+                    updateMicStatus(true, "正在听...");
+                };
+                
+                recognition.onend = function() {
+                    state.isRecording = false;
+                    updateMicStatus(false, "");
+                };
+                
+                recognition.onresult = function(event) {
+                    var text = event.results[0][0].transcript;
+                    updateMicStatus(false, "识别成功: " + text);
+                    processVoice(text);
+                };
+                
+                recognition.onerror = function(e) {
+                    updateMicStatus(false, "错误: " + e.error);
+                    if(e.error === 'not-allowed') alert("请允许麦克风权限");
+                };
+
                 recognition.start();
+
             } catch(e) {
-                console.log("启动异常，尝试强制重启: " + e.message);
-                // 再次尝试
-                setTimeout(function(){
-                    if(recognition) recognition.abort();
-                    recognition = createRecognition();
-                    recognition.start();
-                }, 200);
+                alert("启动失败，请刷新页面: " + e.message);
             }
-        });
+        }
+
+        function updateMicStatus(isActive, text) {
+            var btn = document.getElementById('micBtn');
+            var tip = document.getElementById('statusTip');
+            
+            if(isActive) {
+                btn.parentElement.classList.add('mic-active');
+                btn.classList.replace('bg-blue-600', 'bg-red-500');
+                tip.style.opacity = 1;
+            } else {
+                btn.parentElement.classList.remove('mic-active');
+                btn.classList.replace('bg-red-500', 'bg-blue-600');
+                if(!text) tip.style.opacity = 0;
+            }
+            if(text) tip.innerText = text;
+        }
 
         function processVoice(text) {
-            // 简单的逻辑
             var date = dayjs();
             if(text.includes('明天')) date = date.add(1, 'day');
             if(text.includes('后天')) date = date.add(2, 'day');
+            if(text.includes('下周一')) date = date.day(8);
+
+            var content = text.replace(/明天|后天|下周一/g, '');
             
-            var content = text.replace(/明天|后天/g, '');
-            // 延时一点点确保录音动画结束
-            setTimeout(function(){
-                openEditModal(date.format('YYYY-MM-DD'), content);
-            }, 300);
+            // 立即打开弹窗，不使用 setTimeout，防止被浏览器休眠
+            openEditModal(date.format('YYYY-MM-DD'), content);
         }
     </script>
 </body>
